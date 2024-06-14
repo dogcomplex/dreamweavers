@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  dreamweaver:
+    image: dreamweaver-image
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - AIXCC_LITELLM_HOSTNAME=litellm.local
+      - AIXCC_API_HOSTNAME=api.local
+    networks:
+      - appnet
+
+  iapi:
+    image: your_iapi_image_here  # This should be your lightweight API shim handling requests
+    ports:
+      - "5000:5000"
+    environment:
+      - AIXCC_LITELLM_HOSTNAME=litellm.local
+      - AIXCC_API_HOSTNAME=api.local
+    depends_on:
+      - dreamweaver
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
