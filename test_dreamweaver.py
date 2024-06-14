@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from dreamweaver import run_command, setup_repo, sync_with_upstream, run_docker
+from dreamweaver import run_command, setup_repo, sync_with_upstream, run_docker_compose, execute_script
 
 def test_run_command_success():
     with patch('subprocess.run') as mocked_run:
@@ -28,18 +28,18 @@ async def test_sync_with_upstream():
 @pytest.mark.asyncio
 async def test_setup_repo_existing():
     with patch('os.path.exists', return_value=True), \
-         patch('dreamweaver.run_command', new_callable=MagicMock) as mocked_run:
+        patch('dreamweaver.run_command', new_callable=MagicMock) as mocked_run:
         await setup_repo()
         mocked_run.assert_called_once_with('pip install -r /path/to/local/repo/requirements.txt')
 
 @pytest.mark.asyncio
-async def test_run_docker():
-    with patch('docker.from_env') as mocked_docker:
-        mocked_client = MagicMock()
-        mocked_docker.return_value = mocked_client
-        mocked_client.images.build.return_value = ('image', 'log')
-        mocked_client.containers.run.return_value = MagicMock()
-        container = await run_docker()
-        mocked_client.images.build.assert_called_once()
-        mocked_client.containers.run.assert_called_once_with('example-image', detach=True)
-        assert container is not None
+async def test_run_docker_compose():
+    with patch('dreamweaver.run_command', new_callable=MagicMock) as mocked_run:
+        await run_docker_compose()
+        mocked_run.assert_called_once_with(f'docker-compose -f {DOCKER_COMPOSE_PATH} up --build -d')
+
+@pytest.mark.asyncio
+async def test_execute_script():
+    with patch('dreamweaver.run_command', new_callable=MagicMock) as mocked_run:
+        await execute_script("service_name")
+        mocked_run.assert_called_once_with(f'docker-compose -f {DOCKER_COMPOSE_PATH} exec service_name python submission_formatting.py')

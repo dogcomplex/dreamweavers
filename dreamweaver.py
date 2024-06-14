@@ -1,5 +1,4 @@
 import subprocess
-import docker
 import asyncio
 import aiohttp
 import json
@@ -16,7 +15,7 @@ config.read('config.ini')
 
 # Constants for file paths and credentials from config file
 REPO_PATH = config.get('paths', 'REPO_PATH')
-DOCKER_IMAGE_NAME = config.get('docker', 'DOCKER_IMAGE_NAME')
+DOCKER_COMPOSE_PATH = os.path.join(REPO_PATH, 'docker-compose.yaml')  # Path to your docker-compose file
 UPSTREAM_REPO_URL = config.get('git', 'UPSTREAM_REPO_URL')
 LOCAL_REPO_PATH = config.get('paths', 'LOCAL_REPO_PATH')
 UPSTREAM_BRANCH = config.get('git', 'UPSTREAM_BRANCH')
@@ -31,8 +30,11 @@ os.environ["AZURE_OPENAI_API_KEY"] = config.get('azure', 'AZURE_OPENAI_API_KEY')
 def run_command(command):
     """ Utility function to run a shell command and return its result. """
     try:
-        result = subprocess.run(command, text=True, capture_output=True, check=True)
-        return result.stdout
+        result = subprocess.run(command, shell=True, text=True, capture_output=True, check=True)
+        logging.info(result.stdout)
+        if result.stderr:
+            logging.error(result.stderr)
+        result.check_returncode()  # Ensure no error occurred
     except subprocess.CalledProcessError as e:
         logging.error(f"Command failed: {e.stderr}")
         raise
@@ -55,52 +57,31 @@ async def setup_repo():
         raise FileNotFoundError('requirements.txt not found')
     await asyncio.to_thread(run_command, f'pip install -r {os.path.join(LOCAL_REPO_PATH, "requirements.txt")}')
 
-async def run_docker():
-    """ Build and run Docker container asynchronously. """
-    client = docker.from_env()
-    logging.info("Building Docker image...")
-    image, logs = await asyncio.to_thread(client.images.build, path=REPO_PATH, tag=DOCKER_IMAGE_NAME)
-    logging.info("Running Docker container...")
-    container = await asyncio.to_thread(client.containers.run, DOCKER_IMAGE_NAME, detach=True)
-    return container
+async def run_docker_compose():
+    """ Use docker-compose to build and run containers. """
+    if not os.path.exists(DOCKER_COMPOSE_PATH):
+        logging.error(f"docker-compose.yaml not found at {DOCKER_COMPOSE_PATH}")
+        raise FileNotFoundError(f"docker-compose.yaml not found at {DOCKER_COMPOSE_PATH}")
+    logging.info("Running docker-compose up...")
+    await asyncio.to_thread(run_command, f'docker-compose -f {DOCKER_COMPOSE_PATH} up --build -d')
 
-async def execute_script(container):
-    """ Execute script inside Docker asynchronously. """
-    async with aiohttp.ClientSession() as session:
-        tasks = [asyncio.create_task(query_openai_api(session, i)) for i in range(3)]
-        await asyncio.gather(*tasks)
-    await asyncio.to_thread(container.exec_run, f'python {os.path.join(REPO_PATH, "submission_formatting.py")}')
+async def execute_script(container_name):
+    """ Execute a script inside a Docker container managed by docker-compose. """
+    logging.info(f"Executing script inside the container {container_name}...")
+    await asyncio.to_thread(run_command, f'docker-compose -f {DOCKER_COMPOSE_PATH} exec {container_name} python submission_formatting.py')
 
 async def query_openai_api(session, index):
     """ Function to query OpenAI API using Azure configuration. """
-    # Define the API endpoint and headers
     api_url = os.getenv('AZURE_OPENAI_ENDPOINT')
-    headers = {
-        'Authorization': f'Bearer {os.getenv("AZURE_OPENAI_API_KEY")}',
-        'Content-Type': 'application/json'
-    }
-
-    # Define the conversation with initial system context and user prompt
-    conversation = [
-        {"role": "system", "content": "Assistant is a large language model trained by OpenAI."},
-        {"role": "user", "content": "What are the main benefits of using Azure OpenAI?"}
-    ]
-
-    # Make the API request
-    response = await session.post(
-        f'{api_url}/completions',
-        headers=headers,
-        json={"model": "gpt-3.5-turbo", "messages": conversation}
-    )
-
-    # Check response status
+    headers = {'Authorization': f'Bearer {os.getenv("AZURE_OPENAI_API_KEY")}', 'Content-Type': 'application/json'}
+    conversation = [{"role": "system", "content": "Assistant is a large language model trained by OpenAI."},
+                    {"role": "user", "content": "What are the main benefits of using Azure OpenAI?"}]
+    response = await session.post(f'{api_url}/completions', headers=headers, json={"model": "gpt-3.5-turbo", "messages": conversation})
     if response.status != 200:
         logging.error(f"API request failed with status {response.status}")
         response.raise_for_status()
-
-    # Process the response
     data = await response.json()
-    metadata_dir = os.path.join(REPO_PATH, "dreamweaver", "metadata")
+    metadata_dir = os.path.join(REPO_PATH, "dreamweavers", "metadata")
     os.makedirs(metadata_dir, exist_ok=True)
     with open(os.path.join(metadata_dir, f"prompt{index}.json"), 'w') as f:
         json.dump(data, f)
@@ -111,8 +92,8 @@ async def main():
     """ Main asynchronous function to run tasks. """
     await setup_repo()
     await sync_with_upstream()
-    container = await run_docker()
-    await execute_script(container)
+    await run_docker_compose()
+    await execute_script("container_service_name")  # Replace 'container_service_name' with your service name defined in docker-compose
 
 if __name__ == '__main__':
     asyncio.run(main())
