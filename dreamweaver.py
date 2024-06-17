@@ -44,9 +44,9 @@ async def sync_with_upstream():
     if not os.path.exists(LOCAL_REPO_PATH):
         logging.error(f"Directory not found: {LOCAL_REPO_PATH}")
         raise FileNotFoundError(f"Directory not found: {LOCAL_REPO_PATH}")
-    await asyncio.to_thread(run_command, f'git fetch {UPSTREAM_REPO_URL} -C {LOCAL_REPO_PATH}')
-    await asyncio.to_thread(run_command, f'git rebase {UPSTREAM_REPO_URL}/{UPSTREAM_BRANCH} -C {LOCAL_REPO_PATH}')
-    await asyncio.to_thread(run_command, f'git push origin main -C {LOCAL_REPO_PATH}')
+    await asyncio.to_thread(run_command, f'git fetch {UPSTREAM_REPO_URL} {LOCAL_REPO_PATH}')
+    await asyncio.to_thread(run_command, f'git rebase {UPSTREAM_REPO_URL}/{UPSTREAM_BRANCH} {LOCAL_REPO_PATH}')
+    await asyncio.to_thread(run_command, f'git push origin main {LOCAL_REPO_PATH}')
 
 async def setup_repo():
     """ Clones the repo and installs requirements asynchronously. """
