@@ -52,10 +52,10 @@ async def setup_repo():
     """ Clones the repo and installs requirements asynchronously. """
     if not os.path.exists(LOCAL_REPO_PATH):
         await asyncio.to_thread(run_command, f'git clone {UPSTREAM_REPO_URL} {LOCAL_REPO_PATH}')
-    if not os.path.exists(os.path.join(LOCAL_REPO_PATH, 'requirements.txt')):
+    if os.path.exists(os.path.join(LOCAL_REPO_PATH, 'requirements.txt')):
+        await asyncio.to_thread(run_command, f'python3.10 -m pip install -r {os.path.join(LOCAL_REPO_PATH, "requirements.txt")}')
+    else:
         logging.error('requirements.txt not found')
-        raise FileNotFoundError('requirements.txt not found')
-    await asyncio.to_thread(run_command, f'pip install -r {os.path.join(LOCAL_REPO_PATH, "requirements.txt")}')
 
 async def run_docker_compose():
     """ Use docker-compose to build and run containers. """
